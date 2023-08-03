@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import stat
 import sys
 import tempfile
 
@@ -65,27 +66,38 @@ if sys.platform != 'win32':
         if src_dir != dst_dir:
             _sync_directory(src_dir)
 else:
-    from ctypes import windll, WinError
+    from ctypes import WinError, windll
 
     _MOVEFILE_REPLACE_EXISTING = 0x1
     _MOVEFILE_WRITE_THROUGH = 0x8
     _windows_default_flags = _MOVEFILE_WRITE_THROUGH
 
-    def _handle_errors(rv):
+    def _handle_errors(rv, src, dst):
         if not rv:
-            raise WinError()
+            err = WinError()
+            raise ValueError(f'[AtomicWrite Error] trying to move from "{src}" to "{dst}", [WinError {err.errno}] {err.strerror}.')
 
     def _replace_atomic(src, dst):
-        _handle_errors(windll.kernel32.MoveFileExW(
-            _path_to_unicode(src), _path_to_unicode(dst),
-            _windows_default_flags | _MOVEFILE_REPLACE_EXISTING
-        ))
+        src = _path_to_unicode(src)
+        dst = _path_to_unicode(dst)
+
+        # Try to move
+        rv = windll.kernel32.MoveFileExW(src, dst, _windows_default_flags | _MOVEFILE_REPLACE_EXISTING)
+
+        if not rv:
+            # Change attributes
+            os.chmod(dst, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
+            # Try to move again
+            rv = windll.kernel32.MoveFileExW(src, dst, _windows_default_flags | _MOVEFILE_REPLACE_EXISTING)
+
+            _handle_errors(rv, src, dst)
 
     def _move_atomic(src, dst):
-        _handle_errors(windll.kernel32.MoveFileExW(
-            _path_to_unicode(src), _path_to_unicode(dst),
-            _windows_default_flags
-        ))
+        src = _path_to_unicode(src)
+        dst = _path_to_unicode(dst)
+
+        _handle_errors(windll.kernel32.MoveFileExW(src, dst, _windows_default_flags), src, dst)
 
 
 def replace_atomic(src, dst):
