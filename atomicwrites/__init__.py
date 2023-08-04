@@ -72,6 +72,10 @@ else:
     _MOVEFILE_WRITE_THROUGH = 0x8
     _windows_default_flags = _MOVEFILE_WRITE_THROUGH
 
+    def check_exist(src):
+        if not os.path.exists(src):
+            raise ValueError(f'[AtomicWrite Error] src doesn\'t exist "{src}".')
+
     def _handle_errors(rv, src, dst):
         if not rv:
             err = WinError()
@@ -81,12 +85,16 @@ else:
         src = _path_to_unicode(src)
         dst = _path_to_unicode(dst)
 
+        check_exist(src)
+
         # Try to move
         rv = windll.kernel32.MoveFileExW(src, dst, _windows_default_flags | _MOVEFILE_REPLACE_EXISTING)
 
         if not rv:
             # Change attributes
             os.chmod(dst, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
+            check_exist(src)
 
             # Try to move again
             rv = windll.kernel32.MoveFileExW(src, dst, _windows_default_flags | _MOVEFILE_REPLACE_EXISTING)
@@ -96,6 +104,8 @@ else:
     def _move_atomic(src, dst):
         src = _path_to_unicode(src)
         dst = _path_to_unicode(dst)
+
+        check_exist(src)
 
         _handle_errors(windll.kernel32.MoveFileExW(src, dst, _windows_default_flags), src, dst)
 
